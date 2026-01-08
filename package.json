@@ -1,0 +1,19 @@
+{
+  "name": "raamatukogu-andmebaas",
+  "version": "1.0.0",
+  "description": "Library Database Seed Generator",
+  "main": "seed.js",
+  "scripts": {
+    "start": "node seed.js"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^8.0.2",
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
