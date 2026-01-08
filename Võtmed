@@ -1,0 +1,133 @@
+-- ============================================
+-- Library Database - Full Schema
+-- ============================================
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+-- Character set
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+-- ============================================
+-- Authors table
+-- ============================================
+CREATE TABLE IF NOT EXISTS authors (
+    id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    birth_year YEAR NULL,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Genres table
+-- ============================================
+CREATE TABLE IF NOT EXISTS genres (
+    id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Books table
+-- ============================================
+CREATE TABLE IF NOT EXISTS books (
+    id INT NOT NULL AUTO_INCREMENT,
+    isbn VARCHAR(20) NOT NULL UNIQUE,
+    title VARCHAR(255) NOT NULL,
+    author_id INT NOT NULL,
+    genre_id INT NOT NULL,
+    edition VARCHAR(50),
+    PRIMARY KEY (id),
+    CONSTRAINT fk_book_author FOREIGN KEY (author_id) REFERENCES authors(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_book_genre FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Book copies table
+-- ============================================
+CREATE TABLE IF NOT EXISTS book_copies (
+    id INT NOT NULL AUTO_INCREMENT,
+    book_id INT NOT NULL,
+    barcode VARCHAR(50) NOT NULL UNIQUE,
+    status ENUM('available','borrowed','lost','damaged') NOT NULL DEFAULT 'available',
+    PRIMARY KEY (id),
+    KEY book_id (book_id),
+    CONSTRAINT fk_copy_book FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Users table
+-- ============================================
+CREATE TABLE IF NOT EXISTS users (
+    id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    role ENUM('admin','user') NOT NULL,
+    PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Transactions table
+-- ============================================
+CREATE TABLE IF NOT EXISTS transactions (
+    id INT NOT NULL AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    copy_id INT NOT NULL,
+    issue_date DATE NOT NULL,
+    return_date DATE DEFAULT NULL,
+    status ENUM('borrowed','returned','lost','damaged') NOT NULL DEFAULT 'borrowed',
+    PRIMARY KEY (id),
+    KEY user_id (user_id),
+    KEY copy_id (copy_id),
+    CONSTRAINT fk_transaction_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE RESTRICT,
+    CONSTRAINT fk_transaction_copy FOREIGN KEY (copy_id) REFERENCES book_copies(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================
+-- Triggers
+-- ============================================
+DELIMITER $$
+
+CREATE TRIGGER transactions_before_insert
+BEFORE INSERT ON transactions
+FOR EACH ROW
+BEGIN
+    IF NEW.return_date IS NOT NULL AND NEW.return_date < NEW.issue_date THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'return_date cannot be earlier than issue_date';
+    END IF;
+
+    IF NEW.issue_date > CURDATE() + INTERVAL 1 DAY THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'issue_date cannot be in the future';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM book_copies
+        WHERE id = NEW.copy_id AND status <> 'available'
+    ) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'This copy is not available for borrowing';
+    END IF;
+END$$
+
+CREATE TRIGGER transactions_after_insert
+AFTER INSERT ON transactions
+FOR EACH ROW
+BEGIN
+    IF NEW.return_date IS NULL THEN
+        UPDATE book_copies
+        SET status = 'borrowed'
+        WHERE id = NEW.copy_id AND status = 'available';
+    END IF;
+END$$
+
+DELIMITER ;
+
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
